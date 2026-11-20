@@ -125,7 +125,7 @@ func TestByteStableGeneration(t *testing.T) {
 				Outputs: []xdr.ScSpecTypeDef{{Type: xdr.ScSpecTypeScSpecTypeVoid}},
 			},
 			{
-				Name: "balance",
+				Name: xdr.ScSymbol("balance"),
 				Inputs: []xdr.ScSpecFunctionInputV0{
 					{Name: "account", Type: xdr.ScSpecTypeDef{Type: xdr.ScSpecTypeScSpecTypeAddress}},
 				},
