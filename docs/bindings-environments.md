@@ -14,6 +14,23 @@ The binding generator supports three runtime targets, selected with `--runtime`:
 | **Browser** | `--runtime browser` | Uses the global `fetch` API. No `child_process`, `fs`, or other Node-only imports. Safe to bundle with webpack/Vite/esbuild. |
 | **Universal** | `--runtime universal` | Emits runtime environment-detection code. Works in Node.js, browser, and Electron renderer processes without separate builds. |
 
+---
+
+## Runtime Target Comparison Matrix
+
+| Capability / Dimension | Node.js (`--runtime node`) | Browser (`--runtime browser`) | Universal (`--runtime universal`) |
+|------------------------|----------------------------|-------------------------------|-----------------------------------|
+| **Default Selection** | Yes (applied when `--runtime` is omitted) | No | No |
+| **Primary Environments** | Node.js 18+, backend microservices, CI tools | Modern browsers, SPAs, web dApps | Isomorphic apps, Next.js / Nuxt SSR, Electron |
+| **Simulation Engine** | Local subprocess execution via `child_process.spawn` (`runGlassbox`) | Remote HTTP invocation via `fetch` (`runHTTP`) | Hybrid: checks `_isNode()`, dispatches to `runGlassbox` or `runHTTP` |
+| **RPC Network Transport** | Stellar SDK built-in Node HTTP client (`SorobanRpc.Server`) | Web-standard `window.fetch` / `globalThis.fetch` | Dynamic `_pickFetch()`: `globalThis.fetch` or `node-fetch` fallback |
+| **Node.js Globals Required** | Requires `process`, `Buffer`, and `child_process` | Zero Node globals; strictly web-standard APIs | Lazy loads Node modules when in Node; clean in browser |
+| **`package.json` Configuration** | Standard module exports (`main`, `types`) | Bundler module exclusions via `"browser"` mapping | Conditional export maps (`"exports": { "browser": ..., "default": ... }`) |
+| **Bundler Polyfills Required** | Requires Node polyfills if bundled for client | Zero polyfills needed (Webpack, Vite, Rollup, esbuild) | Bundlers follow conditional exports automatically |
+| **Trust Boundary & Isolation** | Tier 1 / Host Execution (full filesystem & process access) | Tier 5 / Web Sandbox (restricted, no subprocess access) | Tier 1 when on server; Tier 5 when executing in browser |
+
+---
+
 ### Node.js (default)
 
 ```bash
@@ -87,6 +104,49 @@ The generated `package.json` includes conditional exports:
   }
 }
 ```
+
+---
+
+## Runtime Failure Scenarios & Troubleshooting
+
+Understanding common environmental pitfalls helps diagnose issues quickly:
+
+### Failure Scenario 1: Node-Targeted Bindings Bundled for Browser
+
+- **Symptom**: Bundlers fail during build with:
+  ```
+  Module not found: Error: Can't resolve 'child_process' in '.../Glassbox-integration.js'
+  ```
+  Or runtime crashes in the browser with:
+  ```
+  Uncaught ReferenceError: process is not defined
+  ```
+- **Root Cause**: The bindings were generated with `--runtime node` (default), which imports `child_process.spawn`. Browsers have no subprocess execution capabilities.
+- **Resolution**: Re-generate bindings targeting the browser:
+  ```bash
+  glassbox generate-bindings contract.wasm --runtime browser --output ./src/bindings
+  ```
+
+### Failure Scenario 2: Browser Simulator Without HTTP Simulation Backend
+
+- **Symptom**: Calling `sim.simulate(...)` in the browser throws:
+  ```
+  Error: Glassbox HTTP error 404: Not Found
+  ```
+- **Root Cause**: The browser target delegates simulation to an HTTP service (`${rpcUrl}/glassbox/simulate`). If pointing directly to an RPC node that does not host Glassbox simulation endpoints, direct execution is unavailable.
+- **Resolution**: Use the Stellar RPC `simulateTransaction` endpoint via the Stellar SDK, or configure a backend proxy hosting the Glassbox simulation service.
+
+### Failure Scenario 3: Universal Target on Legacy Node.js (< v18)
+
+- **Symptom**: Running universal bindings on Node.js 16 or earlier throws:
+  ```
+  Error: Cannot find module 'node-fetch'
+  ```
+- **Root Cause**: Node.js did not include global `fetch` before v18. Universal bindings attempt to dynamically load `node-fetch` as a fallback.
+- **Resolution**: Upgrade to Node.js 18+ (recommended), or install `node-fetch` in the consuming project:
+  ```bash
+  npm install node-fetch@2
+  ```
 
 ---
 
